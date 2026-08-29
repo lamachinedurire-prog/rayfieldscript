@@ -21,7 +21,8 @@ local tpOnReset = true
 local punchDelay = 0.2
 local savedPos = nil
 local lockedCFramePos = nil
-local defaultWalkSpeed = 16
+
+local normalSpeed = 16
 local sprintSpeed = 28
 
 local function getChar()
@@ -36,15 +37,16 @@ local function getTool()
 	return char:FindFirstChildOfClass("Tool") or player:FindFirstChild("Backpack") and player.Backpack:FindFirstChildOfClass("Tool")
 end
 
+local function setSpeed(speed)
+	local _, _, hum = getChar()
+	if hum then hum.WalkSpeed = speed end
+end
+
 local function bindDeath(char)
 	local hum = char:WaitForChild("Humanoid")
 	local root = char:WaitForChild("HumanoidRootPart")
-	defaultWalkSpeed = hum.WalkSpeed
-	
 	hum.Died:Connect(function()
-		if root then
-			savedPos = root.Position
-		end
+		if root then savedPos = root.Position end
 	end)
 end
 
@@ -54,22 +56,18 @@ player.CharacterAdded:Connect(function(char)
 	bindDeath(char)
 	local root = char:WaitForChild("HumanoidRootPart")
 	local hum = char:WaitForChild("Humanoid")
-	
 	task.wait(0.5)
 	
 	if tpOnReset and savedPos then
 		root.CFrame = CFrame.new(savedPos + Vector3.new(0,5,0))
-		if lockPos then
-			lockedCFramePos = root.Position
-		end
+		if lockPos then lockedCFramePos = root.Position end
 	end
 	
-	if lockPos and not savedPos then
-		lockedCFramePos = root.Position
-	end
+	if lockPos and not savedPos then lockedCFramePos = root.Position end
 	
-	if autoSprint then
-		hum.WalkSpeed = sprintSpeed
+	-- re-apply walkspeed after reset
+	if hum then
+		hum.WalkSpeed = autoSprint and sprintSpeed or normalSpeed
 	end
 	
 	if autoPunch then
@@ -79,63 +77,80 @@ player.CharacterAdded:Connect(function(char)
 	end
 end)
 
--- RAYFIELD TOGGLES
-
+-- UI
 tab:CreateToggle({
     name = "Auto Punch",
     flag = "AutoPunch",
     default = false,
-    callback = function(value)
-		autoPunch = value
-    end,
+    callback = function(v) autoPunch = v end,
 })
 
 tab:CreateSlider({
 	name = "Punch Speed",
 	flag = "PunchSpeed",
-	default = 0.2,
-	min = 0.05,
-	max = 1,
-	step = 0.05,
-	callback = function(value)
-		punchDelay = value
-	end
+	default = 0.2, min = 0.05, max = 1, step = 0.05,
+	callback = function(v) punchDelay = v end
 })
+
+tab:CreateSection({ name = "Movement" })
 
 tab:CreateToggle({
     name = "Auto Run (Run in place if Locked)",
     flag = "AutoRun",
     default = false,
-    callback = function(value)
-		autoRun = value
-    end,
+    callback = function(v) autoRun = v end,
 })
 
 tab:CreateToggle({
     name = "Auto Sprint",
     flag = "AutoSprint",
     default = false,
-    callback = function(value)
-		autoSprint = value
-		local _, _, hum = getChar()
-		if hum then
-			hum.WalkSpeed = value and sprintSpeed or defaultWalkSpeed
-		end
+    callback = function(v)
+		autoSprint = v
+		setSpeed(v and sprintSpeed or normalSpeed)
     end,
 })
+
+tab:CreateSlider({
+	name = "WalkSpeed",
+	flag = "WalkSpeed",
+	default = 16,
+	min = 8,
+	max = 100,
+	step = 1,
+	callback = function(v)
+		normalSpeed = v
+		if not autoSprint then
+			setSpeed(normalSpeed)
+		end
+	end
+})
+
+tab:CreateSlider({
+	name = "Sprint Speed",
+	flag = "SprintSpeed",
+	default = 28,
+	min = 16,
+	max = 150,
+	step = 1,
+	callback = function(v)
+		sprintSpeed = v
+		if autoSprint then
+			setSpeed(sprintSpeed)
+		end
+	end
+})
+
+tab:CreateSection({ name = "Utility" })
 
 tab:CreateToggle({
     name = "Lock Position",
     flag = "LockPos",
     default = false,
-    callback = function(value)
-		lockPos = value
+    callback = function(v)
+		lockPos = v
 		local _, root = getChar()
-		if value and root then
-			lockedCFramePos = root.Position
-		else
-			lockedCFramePos = nil
-		end
+		if v and root then lockedCFramePos = root.Position else lockedCFramePos = nil end
     end,
 })
 
@@ -143,9 +158,7 @@ tab:CreateToggle({
     name = "Teleport Back on Reset",
     flag = "TPOnReset",
     default = true,
-    callback = function(value)
-		tpOnReset = value
-    end,
+    callback = function(v) tpOnReset = v end,
 })
 
 tab:CreateButton({
@@ -160,8 +173,6 @@ tab:CreateButton({
 })
 
 -- LOOPS
-
--- 1. Auto Punch loop (NO VIM so it doesn't break your UI)
 task.spawn(function()
 	while true do
 		if autoPunch then
@@ -180,18 +191,11 @@ task.spawn(function()
 	end
 end)
 
--- 2. Auto Run + Lock + Sprint loop
 RunService.RenderStepped:Connect(function()
 	local char, root, hum = getChar()
 	if not char or not root or not hum then return end
 	
-	if autoSprint and hum.WalkSpeed ~= sprintSpeed then
-		hum.WalkSpeed = sprintSpeed
-	end
-	
-	if autoRun then
-		hum:Move(Vector3.new(0,0,-1), true)
-	end
+	if autoRun then hum:Move(Vector3.new(0,0,-1), true) end
 	
 	if lockPos and lockedCFramePos then
 		if autoRun or hum.MoveDirection.Magnitude > 0 then
